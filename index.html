@@ -1063,22 +1063,38 @@ function renderAmigos(){
         const dados=snapshot.val()||{};
         const listaFirebase=Object.values(dados).filter(d=>d&&d.nome&&d.nome!==G.apelido);
         
-        // Adiciona amigos manuais (G.amigos) à lista
-        const amigosManual=(G.amigos||[]).map(a=>({
-          nome:a.nome,
-          nivel:a.nivel||1,
-          moedas:0,
-          manual:true
-        }));
-        
-        // Combina Firebase + Manuais (remove duplicatas por nome)
-        const nomes=new Set();
-        const lista=[...listaFirebase,...amigosManual].filter(a=>{
-          if(nomes.has(a.nome))return false;
-          nomes.add(a.nome);
-          return true;
+        // Atualiza dados dos amigos manuais com info do Firebase
+        const amigosAtualizados=(G.amigos||[]).map(a=>{
+          // Procura o amigo no Firebase
+          const fbData=listaFirebase.find(d=>d.nome.toLowerCase()===a.nome.toLowerCase());
+          if(fbData){
+            // Amigo encontrado no Firebase - usa dados reais
+            return {
+              nome:fbData.nome,
+              nivel:fbData.nivel||1,
+              moedas:fbData.moedas||0,
+              manual:false, // Marca como encontrado online
+              adicionado:true // Flag para destacar
+            };
+          } else {
+            // Amigo não está online - mantém dados salvos
+            return {
+              nome:a.nome,
+              nivel:a.nivel||1,
+              moedas:0,
+              manual:true, // Marca como offline
+              adicionado:true
+            };
+          }
         });
         
+        // Combina amigos adicionados + outros jogadores do Firebase
+        const nomesAmigos=new Set(amigosAtualizados.map(a=>a.nome.toLowerCase()));
+        const outrosJogadores=listaFirebase
+          .filter(d=>!nomesAmigos.has(d.nome.toLowerCase()))
+          .map(d=>({...d,manual:false,adicionado:false}));
+        
+        const lista=[...amigosAtualizados,...outrosJogadores];
         lista.sort((a,b)=>b.moedas-a.moedas);
         
         l.innerHTML='';
@@ -1093,7 +1109,13 @@ function renderAmigos(){
             const d=document.createElement('div');d.className='amigo';
             const avatar=a.manual?'🧑':'👨‍🌾';
             const status=a.manual?'⚫ Offline':'🟢 Online';
-            d.innerHTML=`<div class="aavatar">${avatar}</div><div class="ainfo"><h4>${a.nome}</h4><p>⭐ Nível ${a.nivel||1} • ${status}</p></div><div style="margin-left:auto;text-align:right"><div style="font-size:.68rem;color:#ffd54f;font-weight:800">🪙${(a.moedas||0).toLocaleString()}</div></div>`;
+            const badge=a.adicionado?'<span style="background:#4caf50;color:white;border-radius:5px;padding:1px 5px;font-size:.58rem;font-weight:900;margin-left:4px">AMIGO</span>':'';
+            // Destaca amigos adicionados
+            if(a.adicionado){
+              d.style.borderColor='rgba(76,175,80,.5)';
+              d.style.background='rgba(76,175,80,.08)';
+            }
+            d.innerHTML=`<div class="aavatar">${avatar}</div><div class="ainfo"><h4>${a.nome}${badge}</h4><p>⭐ Nível ${a.nivel||1} • ${status}</p></div><div style="margin-left:auto;text-align:right"><div style="font-size:.68rem;color:#ffd54f;font-weight:800">🪙${(a.moedas||0).toLocaleString()}</div></div>`;
             l.appendChild(d);
           });
         }
@@ -1494,9 +1516,68 @@ function removerAmigo(id){
 function addAmigo(){
   const inp=document.getElementById('inputamigo');const nome=inp.value.trim();
   if(!nome){notif('❌ Digite um nome!');return;}
-  const avt=['👨','👩','🧑','👴','👵'];
-  G.amigos.push({id:'u'+Date.now(),nome,avatar:avt[Math.floor(Math.random()*avt.length)],nivel:Math.floor(Math.random()*10)+1,online:Math.random()>.5,fazenda:Array(16).fill('')});
-  inp.value='';notif(`👫 ${nome} adicionado!`);tocar('comprar');renderAmigos();salvar();
+  
+  // Verifica se já está na lista
+  if(G.amigos.find(a=>a.nome.toLowerCase()===nome.toLowerCase())){
+    notif('⚠️ Amigo já adicionado!');
+    inp.value='';
+    return;
+  }
+  
+  // Busca dados reais do Firebase
+  if(typeof firebase!=='undefined'&&firebase.apps&&firebase.apps.length>0){
+    firebase.database().ref('ranking').once('value').then((snapshot)=>{
+      const dados=snapshot.val()||{};
+      const jogador=Object.values(dados).find(d=>d&&d.nome&&d.nome.toLowerCase()===nome.toLowerCase());
+      
+      if(jogador){
+        // Amigo encontrado no Firebase!
+        G.amigos.push({
+          id:'u'+Date.now(),
+          nome:jogador.nome,
+          nivel:jogador.nivel||1,
+          avatar:'👨‍🌾',
+          online:true,
+          fazenda:Array(16).fill('')
+        });
+        notif(`✅ ${jogador.nome} adicionado! (Nv${jogador.nivel})`);
+      } else {
+        // Não encontrado no Firebase - adiciona como offline
+        G.amigos.push({
+          id:'u'+Date.now(),
+          nome:nome,
+          nivel:1,
+          avatar:'🧑',
+          online:false,
+          fazenda:Array(16).fill('')
+        });
+        notif(`👫 ${nome} adicionado (não encontrado online)`);
+      }
+      
+      inp.value='';
+      tocar('comprar');
+      renderAmigos();
+      salvar();
+    }).catch(e=>{
+      console.log('Erro ao buscar amigo:',e);
+      notif('❌ Erro ao buscar amigo!');
+    });
+  } else {
+    // Firebase não disponível - adiciona offline
+    G.amigos.push({
+      id:'u'+Date.now(),
+      nome:nome,
+      nivel:1,
+      avatar:'🧑',
+      online:false,
+      fazenda:Array(16).fill('')
+    });
+    inp.value='';
+    notif(`👫 ${nome} adicionado!`);
+    tocar('comprar');
+    renderAmigos();
+    salvar();
+  }
 }
 function visitarAmigo(id,nome,nivel){
   const todos=[...AMIGOS_BASE,...(G.amigos||[])];
@@ -1953,6 +2034,20 @@ function verificarCadastro(){
       if(tentativas<5)setTimeout(tentarSalvar,2000);
     };
     setTimeout(tentarSalvar,1500);
+  } else {
+    // NÃO TEM APELIDO - MOSTRA TELA DE CADASTRO
+    document.getElementById('tela-cadastro').style.display='flex';
+    document.getElementById('tela-cadastro').style.position='fixed';
+    document.getElementById('tela-cadastro').style.inset='0';
+    document.getElementById('tela-cadastro').style.background='rgba(0,0,0,0.95)';
+    document.getElementById('tela-cadastro').style.zIndex='10000';
+    document.getElementById('tela-cadastro').style.alignItems='center';
+    document.getElementById('tela-cadastro').style.justifyContent='center';
+    // Foca no input
+    setTimeout(()=>{
+      const inp=document.getElementById('inputApelido');
+      if(inp)inp.focus();
+    },300);
   }
 }
 
