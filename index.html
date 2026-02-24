@@ -6,8 +6,8 @@
 <title>🌱 Colheita Vida Nova</title>
 <link href="https://fonts.googleapis.com/css2?family=Rye&family=Fredoka+One&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 <script>
   try {
     const firebaseConfig = {
@@ -549,7 +549,8 @@ body{font-family:'Nunito',sans-serif;background:#1a1a2e;min-height:100vh;overflo
   <div class="tela" id="tela-amigos">
     <div class="card" style="background:linear-gradient(135deg,rgba(41,182,246,.1),rgba(2,136,209,.1));border-color:rgba(41,182,246,.2);">
       <h3>👫 Seus Amigos</h3>
-      <p style="font-size:.76rem;color:rgba(255,255,255,.4)">Visite a fazenda dos seus amigos!</p>
+      <p style="font-size:.76rem;color:rgba(255,255,255,.4)">Adicione o apelido dos seus amigos abaixo para visitar a fazenda deles!</p>
+      <button onclick="G.amigos=[];salvar();renderAmigos();notif('🗑️ Lista limpa!');" style="margin-top:8px;background:rgba(244,67,54,.15);border:1px solid rgba(244,67,54,.3);border-radius:8px;padding:6px 12px;color:#ef5350;cursor:pointer;font-size:.72rem;font-family:'Nunito',sans-serif;">🗑️ Limpar lista de amigos</button>
     </div>
     <div id="listaamigos">
       <!-- Amigos aparecem aqui -->
@@ -899,11 +900,7 @@ const RANKING_FAKE=[
   {nome:'🌱 Lucia Plantadora',   nivel:18, moedas:28000},
   {nome:'🍀 Bruno da Terra',     nivel:15, moedas:14000},
 ];
-const AMIGOS_BASE=[
-  {id:'a1',nome:'Maria Silva', avatar:'👩‍🌾',nivel:8, online:true, fazenda:['🥕','🌽','🍅','🌽','🥕','🍓','','','','','','','','','','']},
-  {id:'a2',nome:'João Santos', avatar:'👨‍🌾',nivel:5, online:false,fazenda:['🌽','🌽','','🥕','','','','','','','','','','','','']},
-  {id:'a3',nome:'Ana Lima',    avatar:'👩',    nivel:12,online:true, fazenda:['🍍','🍇','🍓','🍅','🌽','🥕','🍍','🍇','','','','','','','','']},
-];
+const AMIGOS_BASE=[];
 const CASAS=['🏚️','🏠','🏡','🏰'];
 const PRODUTOS_FAKE=[
   {vendedor:'👩‍🌾 Maria', produto:'🥚',nome:'Ovos',   qtd:5, preco:120},
@@ -930,10 +927,24 @@ function novoJogo(){
     selecionada:0,
   };
 }
-function salvar(){localStorage.setItem('cvn4',JSON.stringify(G));}
+function salvar(){
+  // Garantir que apelido e uid estão no G antes de salvar
+  if(!G.apelido){const a=localStorage.getItem('cvn4_apelido');if(a)G.apelido=a;}
+  if(!G.uid){const u=localStorage.getItem('cvn4_uid');if(u)G.uid=u;}
+  localStorage.setItem('cvn4',JSON.stringify(G));
+  salvarNoFirebase();
+}
 function init(){
   try{G=JSON.parse(localStorage.getItem('cvn4'))||novoJogo();}catch(e){G=novoJogo();}
+  // Restaurar apelido e uid do localStorage
+  if(!G.apelido){const a=localStorage.getItem('cvn4_apelido');if(a)G.apelido=a;}
+  if(!G.uid){const u=localStorage.getItem('cvn4_uid');if(u)G.uid=u;}
   if(!G.amigos)G.amigos=[];
+  // Limpar todos amigos salvos antigos - lista começa do zero
+  if(!localStorage.getItem('cvn4_amigos_limpos')){
+    G.amigos=[];
+    localStorage.setItem('cvn4_amigos_limpos','1');
+  }
   if(!G.animais)G.animais=[];
   if(!G.racoes)G.racoes={};
   if(!G.estoque)G.estoque={};
@@ -1047,13 +1058,22 @@ function renderAmigos(){
   const todos=[...AMIGOS_BASE,...(G.amigos||[])];
   todos.forEach(a=>{
     const d=document.createElement('div');d.className='amigo';
-    d.innerHTML=`<div class="aavatar">${a.avatar}</div><div class="ainfo"><h4>${a.nome}</h4><p>⭐ Nível ${a.nivel} • ${a.online?'🟢 Online':'⚫ Offline'}</p></div><button class="btnvisit" onclick="visitarAmigo('${a.id}','${a.nome}',${a.nivel})">Visitar 🏡</button><div class="online ${a.online?'':'offline'}"></div>`;
+    d.innerHTML=`<div class="aavatar">${a.avatar}</div><div class="ainfo"><h4>${a.nome}</h4><p>⭐ Nível ${a.nivel} • ${a.online?'🟢 Online':'⚫ Offline'}</p></div><button class="btnvisit" onclick="visitarAmigo('${a.id}','${a.nome}',${a.nivel})">Visitar 🏡</button><button onclick="removerAmigo('${a.id}')" style="background:rgba(244,67,54,.2);border:1px solid rgba(244,67,54,.3);border-radius:8px;padding:5px 8px;color:#ef5350;cursor:pointer;font-size:.7rem;margin-left:4px;">✕</button><div class="online ${a.online?'':'offline'}"></div>`;
     l.appendChild(d);
   });
-  // Se não tem nenhum amigo
-  if(todos.length===0){
-    l.innerHTML='<p style="color:rgba(255,255,255,.3);padding:18px;text-align:center">Sem amigos ainda! 👇</p>';
-  }
+  // Card para convidar amigos
+  const convite=document.createElement('div');
+  convite.className='card';
+  convite.style.cssText='background:linear-gradient(135deg,rgba(255,213,79,.1),rgba(255,152,0,.1));border-color:rgba(255,213,79,.3);text-align:center;';
+  convite.innerHTML=`<div style="font-size:1.5rem;margin-bottom:6px">🔗</div><div style="font-weight:800;color:#ffd54f;font-size:.9rem;margin-bottom:6px">Convide seus amigos!</div><div style="font-size:.75rem;color:rgba(255,255,255,.5);margin-bottom:10px">Compartilhe o link do jogo e seus amigos aparecerão no ranking!</div><button onclick="compartilharJogo()" style="background:linear-gradient(135deg,#ffd54f,#ff9800);border:none;border-radius:11px;padding:9px 20px;color:#1a1a2e;font-weight:900;font-family:'Nunito',sans-serif;cursor:pointer;font-size:.85rem;">📤 Compartilhar Link</button>`;
+  l.appendChild(convite);
+}
+
+function compartilharJogo(){
+  const url='https://jonisclei.github.io/colheita-vida-nova';
+  const texto='🌱 Estou jogando Colheita Vida Nova! Venha competir comigo no ranking! '+url;
+  if(navigator.share){navigator.share({title:'Colheita Vida Nova',text:texto,url:url});}
+  else{navigator.clipboard.writeText(url).then(()=>notif('🔗 Link copiado! Cole no WhatsApp para seus amigos!'));}
 }
 
 function renderMercado(){
@@ -1226,10 +1246,10 @@ function renderRankingLocal(l){
 function carregarRankingFirebase(){
   const l=document.getElementById('listaranking');
   if(!l)return;
+  if(typeof firebase==='undefined'||!firebase.apps||firebase.apps.length===0){
+    renderRankingLocal(l);return;
+  }
   try{
-    // Salva o jogador primeiro
-    salvarNoFirebase();
-    // Escuta mudanças em tempo real
     firebase.database().ref('ranking').on('value',(snapshot)=>{
       if(!document.getElementById('listaranking'))return;
       const l2=document.getElementById('listaranking');
@@ -1247,7 +1267,7 @@ function carregarRankingFirebase(){
       // Card posição
       const cp=document.createElement('div');
       cp.style.cssText='background:linear-gradient(135deg,rgba(255,213,79,.15),rgba(255,152,0,.15));border:2px solid rgba(255,213,79,.4);border-radius:13px;padding:11px;margin-bottom:11px;text-align:center;';
-      cp.innerHTML=`<div style="font-size:.73rem;color:rgba(255,255,255,.5);font-weight:700">SUA POSIÇÃO</div><div style="font-family:'Fredoka One',cursive;font-size:2.4rem;color:#ffd54f">#${pos>0?pos:'1'}</div><div style="font-size:.76rem;color:rgba(255,255,255,.6)">${total} fazendeiro(s) ao vivo 🌍</div><div style="height:7px;background:rgba(255,255,255,.1);border-radius:10px;margin:5px 0;overflow:hidden"><div style="height:100%;width:${prog}%;background:linear-gradient(90deg,#4caf50,#ffd54f);border-radius:10px"></div></div><div style="font-size:.76rem;color:#ffd54f;font-weight:800;margin-top:3px">🪙 ${G.moedas.toLocaleString()} moedas</div>`;
+      cp.innerHTML=`<div style="font-size:.73rem;color:rgba(255,255,255,.5);font-weight:700">SUA POSIÇÃO</div><div style="font-family:'Fredoka One',cursive;font-size:2.4rem;color:#ffd54f">#${pos>0?pos:'1'}</div><div style="font-size:.76rem;color:rgba(255,255,255,.6)">${total} fazendeiro(s) ao vivo 🌍</div><div style="font-size:.65rem;color:#4caf50;margin-top:2px">🔥 Firebase conectado!</div><div style="height:7px;background:rgba(255,255,255,.1);border-radius:10px;margin:5px 0;overflow:hidden"><div style="height:100%;width:${prog}%;background:linear-gradient(90deg,#4caf50,#ffd54f);border-radius:10px"></div></div><div style="font-size:.76rem;color:#ffd54f;font-weight:800;margin-top:3px">🪙 ${G.moedas.toLocaleString()} moedas</div>`;
       l2.appendChild(cp);
       if(lista.length===0){
         const sem=document.createElement('div');
@@ -1272,12 +1292,19 @@ function carregarRankingFirebase(){
 
 // Salva no Firebase sempre que colher ou ganhar moedas
 function salvarNoFirebase(){
-  if(!window.firebaseOK||!G.apelido||!G.uid)return;
+  if(!G.apelido||!G.uid)return;
   try{
-    firebase.database().ref('ranking/'+G.uid).set({
-      nome:G.apelido,nivel:G.nivel,moedas:G.moedas,atualizado:Date.now()
-    });
-  }catch(e){console.log('Erro salvar Firebase:',e);}
+    if(typeof firebase!=='undefined'&&firebase.apps&&firebase.apps.length>0){
+      firebase.database().ref('ranking/'+G.uid).set({
+        nome:G.apelido,nivel:G.nivel,moedas:G.moedas,atualizado:Date.now()
+      }).then(()=>{
+        window.firebaseOK=true;
+        console.log('✅ Salvo no Firebase!',G.apelido);
+      }).catch(e=>{
+        console.log('❌ Firebase erro ao salvar:',e.message);
+      });
+    }
+  }catch(e){console.log('Erro Firebase:',e);}
 }
 
 // ===== ABAS =====
@@ -1406,6 +1433,13 @@ function mostrarNivelUp(){
 }
 
 // ===== AMIGOS =====
+function removerAmigo(id){
+  G.amigos=G.amigos.filter(a=>a.id!==id);
+  salvar();
+  renderAmigos();
+  notif('👋 Amigo removido!');
+}
+
 function addAmigo(){
   const inp=document.getElementById('inputamigo');const nome=inp.value.trim();
   if(!nome){notif('❌ Digite um nome!');return;}
@@ -1860,10 +1894,14 @@ function verificarCadastro(){
     G.apelido=apelidoSalvo;
     G.uid=uidSalvo;
     document.getElementById('tela-cadastro').style.display='none';
-    // Salva no Firebase logo ao entrar
-    setTimeout(()=>{
+    // Tenta salvar no Firebase várias vezes até funcionar
+    let tentativas=0;
+    const tentarSalvar=()=>{
+      tentativas++;
       salvarNoFirebase();
-    },2000);
+      if(tentativas<5)setTimeout(tentarSalvar,2000);
+    };
+    setTimeout(tentarSalvar,1500);
   }
 }
 
