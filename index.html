@@ -1061,7 +1061,24 @@ function renderAmigos(){
     if(typeof firebase!=='undefined'&&firebase.apps&&firebase.apps.length>0){
       firebase.database().ref('ranking').once('value').then((snapshot)=>{
         const dados=snapshot.val()||{};
-        const lista=Object.values(dados).filter(d=>d&&d.nome&&d.nome!==G.apelido);
+        const listaFirebase=Object.values(dados).filter(d=>d&&d.nome&&d.nome!==G.apelido);
+        
+        // Adiciona amigos manuais (G.amigos) à lista
+        const amigosManual=(G.amigos||[]).map(a=>({
+          nome:a.nome,
+          nivel:a.nivel||1,
+          moedas:0,
+          manual:true
+        }));
+        
+        // Combina Firebase + Manuais (remove duplicatas por nome)
+        const nomes=new Set();
+        const lista=[...listaFirebase,...amigosManual].filter(a=>{
+          if(nomes.has(a.nome))return false;
+          nomes.add(a.nome);
+          return true;
+        });
+        
         lista.sort((a,b)=>b.moedas-a.moedas);
         
         l.innerHTML='';
@@ -1069,13 +1086,14 @@ function renderAmigos(){
           const vazio=document.createElement('div');
           vazio.className='card';
           vazio.style.cssText='text-align:center;padding:20px;color:rgba(255,255,255,.5);';
-          vazio.innerHTML='<div style="font-size:1.5rem;margin-bottom:8px">👥</div><div style="font-size:.82rem">Nenhum amigo online ainda!<br><span style="color:#ffd54f;font-weight:800">Compartilhe o jogo!</span></div>';
+          vazio.innerHTML='<div style="font-size:1.5rem;margin-bottom:8px">👥</div><div style="font-size:.82rem">Nenhum amigo ainda!<br><span style="color:#ffd54f;font-weight:800">Adicione pelo apelido ou compartilhe o jogo!</span></div>';
           l.appendChild(vazio);
         } else {
-          lista.slice(0,20).forEach(a=>{
+          lista.slice(0,30).forEach(a=>{
             const d=document.createElement('div');d.className='amigo';
-            const avatar=['👨‍🌾','👩‍🌾','🧑‍🌾','👨','👩'][Math.floor(Math.random()*5)];
-            d.innerHTML=`<div class="aavatar">${avatar}</div><div class="ainfo"><h4>${a.nome}</h4><p>⭐ Nível ${a.nivel||1} • 🟢 Online</p></div><div style="margin-left:auto;text-align:right"><div style="font-size:.68rem;color:#ffd54f;font-weight:800">🪙${(a.moedas||0).toLocaleString()}</div></div>`;
+            const avatar=a.manual?'🧑':'👨‍🌾';
+            const status=a.manual?'⚫ Offline':'🟢 Online';
+            d.innerHTML=`<div class="aavatar">${avatar}</div><div class="ainfo"><h4>${a.nome}</h4><p>⭐ Nível ${a.nivel||1} • ${status}</p></div><div style="margin-left:auto;text-align:right"><div style="font-size:.68rem;color:#ffd54f;font-weight:800">🪙${(a.moedas||0).toLocaleString()}</div></div>`;
             l.appendChild(d);
           });
         }
