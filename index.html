@@ -1055,18 +1055,49 @@ function renderAmigos(){
   const l=document.getElementById('listaamigos');
   if(!l)return;
   l.innerHTML='';
-  const todos=[...AMIGOS_BASE,...(G.amigos||[])];
-  todos.forEach(a=>{
-    const d=document.createElement('div');d.className='amigo';
-    d.innerHTML=`<div class="aavatar">${a.avatar}</div><div class="ainfo"><h4>${a.nome}</h4><p>⭐ Nível ${a.nivel} • ${a.online?'🟢 Online':'⚫ Offline'}</p></div><button class="btnvisit" onclick="visitarAmigo('${a.id}','${a.nome}',${a.nivel})">Visitar 🏡</button><button onclick="removerAmigo('${a.id}')" style="background:rgba(244,67,54,.2);border:1px solid rgba(244,67,54,.3);border-radius:8px;padding:5px 8px;color:#ef5350;cursor:pointer;font-size:.7rem;margin-left:4px;">✕</button><div class="online ${a.online?'':'offline'}"></div>`;
-    l.appendChild(d);
-  });
-  // Card para convidar amigos
-  const convite=document.createElement('div');
-  convite.className='card';
-  convite.style.cssText='background:linear-gradient(135deg,rgba(255,213,79,.1),rgba(255,152,0,.1));border-color:rgba(255,213,79,.3);text-align:center;';
-  convite.innerHTML=`<div style="font-size:1.5rem;margin-bottom:6px">🔗</div><div style="font-weight:800;color:#ffd54f;font-size:.9rem;margin-bottom:6px">Convide seus amigos!</div><div style="font-size:.75rem;color:rgba(255,255,255,.5);margin-bottom:10px">Compartilhe o link do jogo e seus amigos aparecerão no ranking!</div><button onclick="compartilharJogo()" style="background:linear-gradient(135deg,#ffd54f,#ff9800);border:none;border-radius:11px;padding:9px 20px;color:#1a1a2e;font-weight:900;font-family:'Nunito',sans-serif;cursor:pointer;font-size:.85rem;">📤 Compartilhar Link</button>`;
-  l.appendChild(convite);
+  
+  // Carrega amigos do Firebase (outros jogadores do ranking)
+  try{
+    if(typeof firebase!=='undefined'&&firebase.apps&&firebase.apps.length>0){
+      firebase.database().ref('ranking').once('value').then((snapshot)=>{
+        const dados=snapshot.val()||{};
+        const lista=Object.values(dados).filter(d=>d&&d.nome&&d.nome!==G.apelido);
+        lista.sort((a,b)=>b.moedas-a.moedas);
+        
+        l.innerHTML='';
+        if(lista.length===0){
+          const vazio=document.createElement('div');
+          vazio.className='card';
+          vazio.style.cssText='text-align:center;padding:20px;color:rgba(255,255,255,.5);';
+          vazio.innerHTML='<div style="font-size:1.5rem;margin-bottom:8px">👥</div><div style="font-size:.82rem">Nenhum amigo online ainda!<br><span style="color:#ffd54f;font-weight:800">Compartilhe o jogo!</span></div>';
+          l.appendChild(vazio);
+        } else {
+          lista.slice(0,20).forEach(a=>{
+            const d=document.createElement('div');d.className='amigo';
+            const avatar=['👨‍🌾','👩‍🌾','🧑‍🌾','👨','👩'][Math.floor(Math.random()*5)];
+            d.innerHTML=`<div class="aavatar">${avatar}</div><div class="ainfo"><h4>${a.nome}</h4><p>⭐ Nível ${a.nivel||1} • 🟢 Online</p></div><div style="margin-left:auto;text-align:right"><div style="font-size:.68rem;color:#ffd54f;font-weight:800">🪙${(a.moedas||0).toLocaleString()}</div></div>`;
+            l.appendChild(d);
+          });
+        }
+        
+        // Card para convidar amigos
+        const convite=document.createElement('div');
+        convite.className='card';
+        convite.style.cssText='background:linear-gradient(135deg,rgba(255,213,79,.1),rgba(255,152,0,.1));border-color:rgba(255,213,79,.3);text-align:center;margin-top:12px;';
+        convite.innerHTML=`<div style="font-size:1.5rem;margin-bottom:6px">🔗</div><div style="font-weight:800;color:#ffd54f;font-size:.9rem;margin-bottom:6px">Convide seus amigos!</div><div style="font-size:.75rem;color:rgba(255,255,255,.5);margin-bottom:10px">Compartilhe o link do jogo e eles aparecerão aqui!</div><button onclick="compartilharJogo()" style="background:linear-gradient(135deg,#ffd54f,#ff9800);border:none;border-radius:11px;padding:9px 20px;color:#1a1a2e;font-weight:900;font-size:.82rem;cursor:pointer;font-family:'Nunito',sans-serif;">📤 Compartilhar</button>`;
+        l.appendChild(convite);
+      });
+    } else {
+      // Fallback se Firebase não estiver disponível
+      const vazio=document.createElement('div');
+      vazio.className='card';
+      vazio.style.cssText='text-align:center;padding:20px;color:rgba(255,255,255,.5);';
+      vazio.innerHTML='<div style="font-size:1.5rem;margin-bottom:8px">🔥</div><div style="font-size:.82rem">Conectando ao Firebase...<br><span style="color:#ffd54f">Aguarde!</span></div>';
+      l.appendChild(vazio);
+    }
+  }catch(e){
+    console.log('Erro ao carregar amigos:',e);
+  }
 }
 
 function compartilharJogo(){
@@ -1392,7 +1423,7 @@ function comprar(id,preco,tipo,casaId){
     G.casaTipo=casaId;iniciarImposto();
     notif('🏠 Casa comprada! Pague o imposto! 🏛️');renderCasa();
   }else notif('✅ Item comprado!');
-  tocar('comprar');pReagir('comprar');renderTopo();renderLoja();salvar();
+  tocar('comprar');pReagir('comprar');renderTopo();renderLoja();salvar();salvarNoFirebase();
 }
 
 function comprarMovel(id,preco){
@@ -1401,7 +1432,7 @@ function comprarMovel(id,preco){
   if(G.moedas<preco){notif('❌ Moedas insuficientes!');return;}
   G.moedas-=preco;G.moveis.push(id);
   notif('🛋️ Móvel instalado!');tocar('comprar');
-  renderTopo();renderLoja();renderCasa();salvar();
+  renderTopo();renderLoja();renderCasa();salvar();salvarNoFirebase();
 }
 
 function coletarMissao(id){
@@ -1410,7 +1441,7 @@ function coletarMissao(id){
   G.moedas+=m.recomp;G.xp+=m.xpR;m.coletada=true;
   verificarNivel();
   notif(`🎉 Missão! +${m.recomp}🪙`);tocar('nivel');bump('pillmoedas');
-  renderMissoes();renderTopo();salvar();
+  renderMissoes();renderTopo();salvar();salvarNoFirebase();
 }
 
 function verificarNivel(){
@@ -1421,6 +1452,8 @@ function verificarNivel(){
     else G.xpMax=Math.floor(80*Math.pow(1.3,20)*Math.pow(1.15,80)*Math.pow(1.08,G.nivel-100));
     mostrarNivelUp();tocar('nivel');pReagir('nivel');renderSementes();
   }
+  // Atualiza Firebase quando muda de nível
+  salvarNoFirebase();
 }
 
 function mostrarNivelUp(){
@@ -1463,18 +1496,18 @@ function venderP(key,emoji,nome,preco){
   if(!G.estoque[key]||G.estoque[key]===0){notif('❌ Sem estoque!');return;}
   G.estoque[key]--;G.moedas+=preco;
   notif(`${emoji} Vendido por 🪙${preco}!`);tocar('colher');bump('pillmoedas');
-  renderMercado();renderTopo();salvar();
+  renderMercado();renderTopo();salvar();salvarNoFirebase();
 }
 function venderTudo(key,emoji,nome,preco,qtd){
   if(!G.estoque[key]||G.estoque[key]===0){notif('❌ Sem estoque!');return;}
   const total=G.estoque[key]*preco;G.moedas+=total;G.estoque[key]=0;
   notif(`${emoji} Vendeu tudo! +🪙${total.toLocaleString()}`);tocar('colher');bump('pillmoedas');particula(0,emoji);
-  renderMercado();renderTopo();salvar();
+  renderMercado();renderTopo();salvar();salvarNoFirebase();
 }
 function comprarMercado(emoji,nome,preco,vendedor){
   if(G.moedas<preco){notif('❌ Moedas insuficientes!');return;}
   G.moedas-=preco;notif(`${emoji} ${nome} comprado!`);tocar('comprar');bump('pillmoedas');
-  renderTopo();salvar();
+  renderTopo();salvar();salvarNoFirebase();
 }
 function roubarAnimal(nome,tipo,val){
   const def=ANIMAIS_ITENS.find(a=>a.id===tipo);if(!def)return;
@@ -1482,7 +1515,7 @@ function roubarAnimal(nome,tipo,val){
   G.moedas-=50;G.moedas+=val;
   G.animais.push({tipo:def.id,nome:'Resgatado',fome:50,pronto:false,coletado:false,proximaColeta:Date.now()+def.tempoColeta*1000,compradoEm:Date.now()});
   notif(`${def.emoji} Animal resgatado! +🪙${val}`);tocar('nivel');particula(0,def.emoji);
-  renderAnimais();renderMercado();renderTopo();salvar();
+  renderAnimais();renderMercado();renderTopo();salvar();salvarNoFirebase();
 }
 function comprarCasaLeilao(preco){
   if(G.casaTipo>0){notif('🏠 Já tem uma casa!');return;}
@@ -1505,7 +1538,7 @@ function pagarImposto(){
   document.getElementById('alertaimposto').style.display='none';
   notif('✅ Imposto pago! Casa segura! 🏠');tocar('comprar');
   setTimeout(()=>{if(G.casaTipo>0){iniciarImposto();notif('🏛️ Novo imposto! Pague em 1 minuto!');}},60000);
-  renderMercado();renderTopo();salvar();
+  renderMercado();renderTopo();salvar();salvarNoFirebase();
 }
 
 // ===== ANIMAIS =====
@@ -1516,13 +1549,13 @@ function comprarAnimal(tipo){
   G.moedas-=def.preco;
   G.animais.push({tipo:def.id,nome:'',fome:100,pronto:false,coletado:false,proximaColeta:Date.now()+def.tempoColeta*1000,compradoEm:Date.now(),ultimaFome:Date.now(),timerRoubo:null,roubavel:false});
   notif(`${def.emoji} ${def.nome} comprada! Alimente! 🌾`);tocar('comprar');particula(0,def.emoji);
-  renderAnimais();renderTopo();salvar();
+  renderAnimais();renderTopo();salvar();salvarNoFirebase();
 }
 function comprarRacao(id,preco){
   if(G.moedas<preco){notif('❌ Moedas insuficientes!');return;}
   G.moedas-=preco;G.racoes[id]=(G.racoes[id]||0)+5;
   notif(`🌾 +5 ${RACOES_ITENS.find(r=>r.id===id)?.nome}!`);tocar('comprar');
-  renderAnimais();renderTopo();salvar();
+  renderAnimais();renderTopo();salvar();salvarNoFirebase();
 }
 function alimentar(racaoId){
   const r=RACOES_ITENS.find(x=>x.id===racaoId);
@@ -1533,7 +1566,7 @@ function alimentar(racaoId){
   G.racoes[racaoId]=Math.max(0,G.racoes[racaoId]-1);
   document.getElementById('alertafome').style.display='none';
   notif(`🌾 ${n} animal(is) alimentado(s)!`);tocar('colher');
-  renderAnimais();salvar();
+  renderAnimais();salvar();salvarNoFirebase();
 }
 function coletarAnimal(idx){
   const a=G.animais[idx];const def=ANIMAIS_ITENS.find(x=>x.id===a.tipo);
@@ -1543,7 +1576,7 @@ function coletarAnimal(idx){
   G.estoque['a'+def.id]=(G.estoque['a'+def.id]||0)+1;
   a.pronto=false;a.coletado=true;a.proximaColeta=Date.now()+def.tempoColeta*1000;
   verificarNivel();notif(`${def.produto} +🪙${ganho}`);tocar('colher');bump('pillmoedas');particula(0,def.produto);
-  renderAnimais();renderTopo();salvar();
+  renderAnimais();renderTopo();salvar();salvarNoFirebase();
 }
 
 // ===== TICKS =====
